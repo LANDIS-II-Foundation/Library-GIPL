@@ -47,7 +47,7 @@ namespace Landis.Extension.GiplDamm
                 LayerCf = new IndexedArray<double>(sx, lx + 1);
                 LayerType = new IndexedArray<int>(sx, lx + 1);
 
-                DefaultWaterContentProfile = new double[lx + 2];
+                //DefaultWaterContentProfile = new double[lx + 2];
 
                 Tscale = 1.0e6 / 86400.0;   // force time scale to be daily - 86400 is the number of seconds in one day
             }
@@ -80,8 +80,8 @@ namespace Landis.Extension.GiplDamm
             public IndexedArray<int> LayerType;
             public double InitialDepth;
 
-            // water content fraction profile
-            public double[] DefaultWaterContentProfile;
+            //// water content fraction profile
+            //public double[] DefaultWaterContentProfile;
         }
 
         private class PropertiesModule
@@ -91,14 +91,14 @@ namespace Landis.Extension.GiplDamm
 
             public PropertiesModule()
             {
-                var nLayers = Enum.GetNames(typeof(GiplDammLayerType)).Length;
+                //var nLayers = Enum.GetNames(typeof(GiplDammLayerType)).Length;
 
-                SoilWaterContent = new double[nLayers + 1];
+                SoilWaterContent = new double[_nLayers + 1];
             }
 
-            public static void InitializeGlobalProperties()
+            public static void InitializeGlobalProperties(int nLayers)
             {
-                var nLayers = Enum.GetNames(typeof(GiplDammLayerType)).Length;
+                //var nLayers = Enum.GetNames(typeof(GiplDammLayerType)).Length;
 
                 UnfrXdata = JaggedArray<double>(nLayers + 1, UnfrNdata + 1);
                 UnfrC = new double[nLayers + 1][][];
@@ -110,6 +110,8 @@ namespace Landis.Extension.GiplDamm
 
                 SoilLm = new double[nLayers + 1];
                 SoilCm = new double[nLayers + 1];
+
+                _nLayers = nLayers;
             }
 
             // globals
@@ -123,6 +125,7 @@ namespace Landis.Extension.GiplDamm
             public static double[][] UnfrFdata { get; set; }
             public static double[] SoilLm { get; set; }
             public static double[] SoilCm { get; set; }
+            private static int _nLayers { get; set; }
 
             // instance properties
             public double[] SoilWaterContent { get; set; }

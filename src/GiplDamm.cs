@@ -32,24 +32,28 @@ namespace Landis.Extension.GiplDamm
         private IndexedArray<double> _temperature;
         private IndexedArray<double> _liquidFraction;
 
-        private string _wd;
+        private static string _wd;
         private int _instance;
         //const string _file = "ModeledGroundTemperatureGiplDamm";
 
-        private List<double> _shawDepths;
+        private int _maxCommonNode;
+        //private List<double> _shawDepths;
 
         private static string ver = "1";
 
 
         // global static properties inputs
-        private static HashSet<GiplDammLayerType> _enabledLayerTypes;
+        //private static HashSet<GiplDammLayerType> _enabledLayerTypes;
         private static double _wcrit;
         private static double _geothermalHeatFlux;
+        private static List<string> _layerTypes;
+
         //private static double _defaultSnowThermalConductivity;
         //private static double _defaultSnowVolumetricHeatCapacity;
-        private static double[] _defaultSoilWaterContentByLayerType;
+        //private static double[] _defaultSoilWaterContentByLayerType;
+        //private double[] _defaultSoilWaterContentByLayerType;
 
-  
+
         #endregion
 
         private void Abort()
@@ -79,16 +83,16 @@ namespace Landis.Extension.GiplDamm
 
         #region methods
 
-        public HashSet<GiplDammLayerType> EnabledLayerTypes => _enabledLayerTypes;
+        //public HashSet<GiplDammLayerType> EnabledLayerTypes => _enabledLayerTypes;
 
-        public GiplDammLayerType[] GetNodeLayerTypes()
-        {
-            var layerTypes = new GiplDammLayerType[_lx];
-            for (var i = 0; i < _lx; ++i)
-                layerTypes[i] = (GiplDammLayerType)_numericsModule.LayerType[i + 2];
+        //public GiplDammLayerType[] GetNodeLayerTypes()
+        //{
+        //    var layerTypes = new GiplDammLayerType[_lx];
+        //    for (var i = 0; i < _lx; ++i)
+        //        layerTypes[i] = (GiplDammLayerType)_numericsModule.LayerType[i + 2];
 
-            return layerTypes;
-        }
+        //    return layerTypes;
+        //}
 
         public List<double> GetGiplDepths()
         {
@@ -109,8 +113,11 @@ namespace Landis.Extension.GiplDamm
         //    return porosities;
         //}
 
-        public static bool GlobalInitialization(string wd)
+        public static bool GlobalInitialization(string propertiesFilePath, out string errorMessage)
         {
+            errorMessage = string.Empty;
+            _wd = Path.GetDirectoryName(propertiesFilePath);
+
             HasGlobalSetup = true;
 
             List<string> lines;
@@ -120,51 +127,80 @@ namespace Landis.Extension.GiplDamm
             // read the 'properties.txt' file
 
             //if (!ReadTextFile(Path.Combine(wd, "propertiesGd.txt"), out lines))
-            if (!ReadTextFile(Path.Combine(wd, "properties.txt"), out lines))
+            if (!ReadTextFile(propertiesFilePath, out lines, out errorMessage))
                 return false;
 
-            // initialize properties module global properties
-            PropertiesModule.InitializeGlobalProperties();
+            //// initialize properties module global properties
+            //PropertiesModule.InitializeGlobalProperties();
 
-            _enabledLayerTypes = new HashSet<GiplDammLayerType>();
-            _defaultSoilWaterContentByLayerType = new double[Enum.GetNames(typeof(GiplDammLayerType)).Length];
+            //_enabledLayerTypes = new HashSet<GiplDammLayerType>();
+            //_defaultSoilWaterContentByLayerType = new double[Enum.GetNames(typeof(GiplDammLayerType)).Length];
 
-            var rc = 0;
+            var rc = -1;
 
-            ++rc;   // Geothermal heat flux header
-            _geothermalHeatFlux = double.Parse(lines[rc++]);
-            ++rc;   // W crit header
-            _wcrit = double.Parse(lines[rc++]);
+            //++rc;   // Geothermal heat flux header
+            //_geothermalHeatFlux = double.Parse(lines[rc++]);
+            //++rc;   // W crit header
+            //_wcrit = double.Parse(lines[rc++]);
+            
+            
             //++rc;   // snow thermal conductivity header
             //_defaultSnowThermalConductivity = double.Parse(lines[rc++]);
             //++rc;   // snow volumetric heat capacity header
             //_defaultSnowVolumetricHeatCapacity = double.Parse(lines[rc++]);
 
-            // skip blank rows
-            while (string.IsNullOrEmpty(lines[rc]))
-                ++rc;
+            // Geothermal heat flux
+            while (++rc < lines.Count && !lines[rc].StartsWith("GeothermalHeatFlux", StringComparison.OrdinalIgnoreCase))
+            { }
 
-            ++rc;   // layer properties table
-            while (rc < lines.Count)
+            line = ParseLine(lines[rc]);
+            if (!double.TryParse(line[1], out _geothermalHeatFlux))
             {
-                line = ParseLine(lines[rc++]);
+                errorMessage = $"Cannot parse '{line[1]}' as numeric for GeothermalHeatFlux";
+                return false;
+            }
 
-                if (!Enum.TryParse(line[0], true, out GiplDammLayerType lType))
-                {
-                    Console.WriteLine($"Unrecognized GiplDamm Layer Type '{line[0]}' in properties file");
-                    return false;
-                }
+            // W critical
+            while (++rc < lines.Count && !lines[rc].StartsWith("WCritial", StringComparison.OrdinalIgnoreCase))
+            { }
 
-                _enabledLayerTypes.Add(lType);  // keep track of the layer types
+            line = ParseLine(lines[rc]);
+            if (!double.TryParse(line[1], out _wcrit))
+            {
+                errorMessage = $"Cannot parse '{line[1]}' as numeric for WCritial";
+                return false;
+            }
 
-                var i = (int)lType;
-                _defaultSoilWaterContentByLayerType[i] = double.Parse(line[1]);
-                PropertiesModule.SoilLm[i] = double.Parse(line[2]);
-                PropertiesModule.SoilCm[i] = double.Parse(line[3]);
+            // skip blank rows
+            while (++rc < lines.Count && string.IsNullOrEmpty(lines[rc]))
+            { }
+
+            // parse layer properties table
+            ++rc;   // skip headers
+            var layerRows = new List<string>();
+
+            while (rc < lines.Count && !string.IsNullOrEmpty(lines[rc]))
+            {
+                layerRows.Add(lines[rc]);
+                ++rc;
+            }
+
+            // initialize properties module global properties
+            PropertiesModule.InitializeGlobalProperties(layerRows.Count);
+
+            _layerTypes = new List<string>();
+            var i = 1;
+            foreach (var layerRow in layerRows)
+            {
+                line = ParseLine(layerRow);
+                _layerTypes.Add(line[0]);
+
+                PropertiesModule.SoilLm[i] = double.Parse(line[1]);
+                PropertiesModule.SoilCm[i] = double.Parse(line[2]);
 
                 // last column refers to another file
                 List<string> flines;
-                if (!ReadTextFile(Path.Combine(wd, line[4]), out flines))
+                if (!ReadTextFile(Path.Combine(_wd, line[3]), out flines, out errorMessage))
                     return false;
 
                 var frc = 0;   // file row counter
@@ -178,70 +214,172 @@ namespace Landis.Extension.GiplDamm
 
                 // create Hermite polynomial
                 SplineHermite.SplineHermiteSet(PropertiesModule.UnfrNdata, PropertiesModule.UnfrXdata[i], PropertiesModule.UnfrFdata[i], PropertiesModule.UnfrDfdata[i], PropertiesModule.UnfrC[i]);
+
+                ++i;
             }
+
+            //while (rc < lines.Count)
+            //{
+            //    line = ParseLine(lines[rc++]);
+
+            //    if (!Enum.TryParse(line[0], true, out GiplDammLayerType lType))
+            //    {
+            //        Console.WriteLine($"Unrecognized GiplDamm Layer Type '{line[0]}' in properties file");
+            //        return false;
+            //    }
+
+            //    _enabledLayerTypes.Add(lType);  // keep track of the layer types
+
+            //    var i = (int)lType;
+            //    //_defaultSoilWaterContentByLayerType[i] = double.Parse(line[1]);
+            //    PropertiesModule.SoilLm[i] = double.Parse(line[2]);
+            //    PropertiesModule.SoilCm[i] = double.Parse(line[3]);
+
+            //    // last column refers to another file
+            //    List<string> flines;
+            //    if (!ReadTextFile(Path.Combine(wd, line[4]), out flines))
+            //        return false;
+
+            //    var frc = 0;   // file row counter
+            //    for (var j = 1; j <= PropertiesModule.UnfrNdata; ++j)
+            //    {
+            //        var fline = _whiteSpaceRegex.Split(flines[frc++]);
+            //        PropertiesModule.UnfrXdata[i][j] = double.Parse(fline[0]);
+            //        PropertiesModule.UnfrFdata[i][j] = double.Parse(fline[1]);
+            //        PropertiesModule.UnfrDfdata[i][j] = double.Parse(fline[2]);
+            //    }
+
+            //    // create Hermite polynomial
+            //    SplineHermite.SplineHermiteSet(PropertiesModule.UnfrNdata, PropertiesModule.UnfrXdata[i], PropertiesModule.UnfrFdata[i], PropertiesModule.UnfrDfdata[i], PropertiesModule.UnfrC[i]);
+            //}
 
             return true;
         }
 
-        public bool Initialize(string wd, string name, List<double> shawDepths)
+        public bool Initialize(string name, Dictionary<string, string> thuFileData, out string errorMessage)
         {
-            _wd = wd;
+            errorMessage = string.Empty;
+
             Name = name;
-
-            //_instance = instance;
-            _shawDepths = shawDepths;
-
-            List<string> lines;
-            List<string> line;
-
             _propertiesModule = new PropertiesModule();
 
+            //_defaultSoilWaterContentByLayerType = new double[Enum.GetNames(typeof(GiplDammLayerType)).Length];
 
-            // **
-            // read the 'initial.txt' file
+            // get the layers to be processed
 
-            if (!ReadTextFile(Path.Combine(_wd, $"initial.txt"), out lines))
-            //if (!ReadTextFile(Path.Combine(_wd, $"initialGd{_instance}.txt"), out lines))
+            var snowLayerInput = new GiplLayerInput();
+
+            if (!TryParseInput("SnowNodes", thuFileData["SnowNodes"], out snowLayerInput.Nodes, out errorMessage, 0))
                 return false;
 
-            var rc = 0;
+            if (!TryParseInput("MaxSnowThickness", thuFileData["MaxSnowThickness"], out snowLayerInput.MaxDepth, out errorMessage, 0.0))
+                return false;
 
-            line = ParseLine(lines[rc++]);
-            _lx = int.Parse(line[0]);
-            _sx = int.Parse(line[1]);
+            if (!TryParseInput("InitSnowTemperature", thuFileData["InitSnowTemperature"], out snowLayerInput.InitTemperature, out errorMessage, AbsZero))
+                return false;
 
-            _temperature = new IndexedArray<double>(_sx, _lx + 1);
-            _liquidFraction = new IndexedArray<double>(_sx, _lx + 1);
-
-            _numericsModule = new NumericsModule(_sx, _lx);
-
-            for (var i = _sx; i <= 0; ++i)
+            // read common layers 
+            var soilLayerInputs = new List<GiplLayerInput>();
+            var jj = 1;
+            while (true)
             {
-                line = ParseLine(lines[rc++]);
-                //_numericsModule.LayerType[i] = int.Parse(line[1]);
-                _numericsModule.Xref[i] = double.Parse(line[2]);
-                _temperature[i] = double.Parse(line[3]);
-            }
+                var key = $"GiplSoilType{jj}";
+                if (!thuFileData.TryGetValue(key, out var soilType) || string.IsNullOrEmpty(soilType))
+                    break;
 
-
-            for (var i = 1; i <= _lx; ++i)
-            {
-                line = ParseLine(lines[rc++]);
-
-                if (!Enum.TryParse(line[1], true, out GiplDammLayerType lType) || !_enabledLayerTypes.Contains(lType))
+                if (!_layerTypes.Contains(soilType, StringComparer.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine($"Unrecognized GiplDamm Layer Type '{line[1]}' or the Layer Type not enabled in the properties file, at soil layer {i}");
+                    errorMessage = $"Unrecognized {key} '{soilType}'. Available types are {string.Join(",", _layerTypes)}";
                     return false;
                 }
 
-                _numericsModule.LayerType[i + 1] = (int)lType;
-                _numericsModule.Xref[i] = double.Parse(line[2]);
-                _temperature[i + 1] = double.Parse(line[3]);
+                var layer = new GiplLayerInput { LayerIndex = _layerTypes.FindIndex(x => x.Equals(soilType, StringComparison.OrdinalIgnoreCase)) + 1 };
 
-                // set the default water content fraction profile based on the default layer type water content
-                _numericsModule.DefaultWaterContentProfile[i + 1] = _defaultSoilWaterContentByLayerType[(int)lType];
+                if (!TryParseInput($"Nodes{jj}", thuFileData[$"Nodes{jj}"], out layer.Nodes, out errorMessage, 0))
+                    return false;
+
+                if (!TryParseInput($"MaxDepth{jj}", thuFileData[$"MaxDepth{jj}"], out layer.MaxDepth, out errorMessage, 0.0))
+                    return false;
+
+                if (!TryParseInput($"InitTemperature{jj}", thuFileData[$"InitTemperature{jj}"], out layer.InitTemperature, out errorMessage, AbsZero))
+                    return false;
+
+                if (!TryParseInput($"InitWaterContent{jj}", thuFileData[$"InitWaterContent{jj}"], out layer.InitWaterContent, out errorMessage, 0.0))
+                    return false;
+
+                soilLayerInputs.Add(layer);
+                ++jj;
             }
 
+            _maxCommonNode = soilLayerInputs.Sum(x => x.Nodes) + 1;
+
+            // read bottom layer (optional)
+            if (!string.IsNullOrEmpty(thuFileData["BottomGiplSoilType"]))
+            {
+                var soilType = thuFileData["BottomGiplSoilType"];
+                if (!_layerTypes.Contains(soilType, StringComparer.OrdinalIgnoreCase))
+                {
+                    errorMessage = $"Unrecognized BottomGiplSoilType '{soilType}'. Available types are {string.Join(",", _layerTypes)}";
+                    return false;
+                }
+
+                var layer = new GiplLayerInput { LayerIndex = _layerTypes.FindIndex(x => x.Equals(soilType, StringComparison.OrdinalIgnoreCase)) + 1};
+
+                if (!TryParseInput("BottomGiplNodes", thuFileData["BottomGiplNodes"], out layer.Nodes, out errorMessage, 0))
+                    return false;
+
+                if (!TryParseInput("BottomGiplMaxDepth", thuFileData["BottomGiplMaxDepth"], out layer.MaxDepth, out errorMessage, 0.0))
+                    return false;
+
+                if (!TryParseInput("BottomGiplInitTemperature", thuFileData["BottomGiplInitTemperature"], out layer.InitTemperature, out errorMessage, AbsZero))
+                    return false;
+
+                if (!TryParseInput("BottomGiplWaterContent", thuFileData["BottomGiplWaterContent"], out layer.InitWaterContent, out errorMessage, 0.0))
+                    return false;
+
+                soilLayerInputs.Add(layer);
+            }
+
+            // set up layers
+            _sx = -snowLayerInput.Nodes;
+            _lx = soilLayerInputs.Sum(x => x.Nodes) + 1;
+
+            _temperature = new IndexedArray<double>(_sx, _lx + 1);
+            _liquidFraction = new IndexedArray<double>(_sx, _lx + 1);
+            _numericsModule = new NumericsModule(_sx, _lx);
+
+            // snow
+            var step = snowLayerInput.MaxDepth / snowLayerInput.Nodes;
+
+            for (var i = _sx; i <= 0; ++i)
+            {
+                _numericsModule.Xref[i] = step * i;
+                _temperature[i] = snowLayerInput.InitTemperature;
+            }
+
+            var previousMaxDepth = 0.0;
+            var j = 1;
+            foreach (var layer in soilLayerInputs)
+            {
+                var maxDepth = layer.MaxDepth;
+                step = (maxDepth - previousMaxDepth) / layer.Nodes;
+                for (var i = layer == soilLayerInputs.First() ? 0 : 1; i <= layer.Nodes; ++i)
+                {
+                    _numericsModule.LayerType[j + 1] = layer.LayerIndex;
+                    _numericsModule.Xref[j] = previousMaxDepth + step * i;
+                    _temperature[j + 1] = layer.InitTemperature;
+
+                    //// set the default water content fraction profile based on the default layer type water content
+                    //_numericsModule.DefaultWaterContentProfile[j + 1] = layer.InitWaterContent;
+                    _numericsModule.LayerW[j + 1] = layer.InitWaterContent;
+
+                    ++j;
+                }
+
+                previousMaxDepth = maxDepth;
+            }
+
+            //_shawDepths = Enumerable.Range(0, _maxCommonNode).Select(x => _numericsModule.Xref[x + 1]).ToList();
 
             // initialize liquid fraction
 
@@ -257,27 +395,129 @@ namespace Landis.Extension.GiplDamm
                 _liquidFraction[i] = 0.0;
             }
 
+            var logPath = Path.Combine(_wd, "Outputs");
+            if (!Directory.Exists(logPath))
+                Directory.CreateDirectory(logPath);
 
-            //var writer = new StreamWriter(Path.Combine(_wd, $"{_file}{_instance}.txt"));
-            //var writer = new StreamWriter(Path.Combine(_wd, $"{_file}.txt"));
-
-            //var time = 0.0;
-            //writer.Write($"{time,15:F8}");
-            //for (var j = 1; j <= _numericsModule.Lx; ++j)
-            //    writer.Write($"{_numericsModule.Xref[j],15:F8}");
-            //writer.WriteLine();
-
-            //writer.Close();
-
-            var writer = new StreamWriter(Path.Combine(_wd, $"{Name}_Log.txt"));
+            var writer = new StreamWriter(Path.Combine(logPath, $"Log_{Name}.txt"));
 
             var time = 0.0;
             writer.Write($"{time,15:F8}");
-            foreach (var d in shawDepths)
-                writer.Write($"{d,15:F8}");
+            for (var i = 0; i < _maxCommonNode; ++i)
+                writer.Write($"{_numericsModule.Xref[i + 1],15:F8}");
+            //foreach (var d in _shawDepths)
+            //    writer.Write($"{d,15:F8}");
             writer.WriteLine();
 
             writer.Close();
+
+            return true;
+        }
+
+        private class GiplLayerInput
+        {
+            public int LayerIndex;
+            public int Nodes;
+            public double MaxDepth;
+            public double InitTemperature;
+            public double InitWaterContent;
+        }
+
+        public bool Initialize(string wd, string name, List<double> shawDepths)
+        {
+            //_wd = wd;
+            //Name = name;
+
+            ////_instance = instance;
+            //_shawDepths = shawDepths;
+
+            //List<string> lines;
+            //List<string> line;
+
+            //_propertiesModule = new PropertiesModule();
+
+
+            //// **
+            //// read the 'initial.txt' file
+
+            //if (!ReadTextFile(Path.Combine(_wd, $"initial.txt"), out lines))
+            //    //if (!ReadTextFile(Path.Combine(_wd, $"initialGd{_instance}.txt"), out lines))
+            //    return false;
+
+            //var rc = 0;
+
+            //line = ParseLine(lines[rc++]);
+            //_lx = int.Parse(line[0]);
+            //_sx = int.Parse(line[1]);
+
+            //_temperature = new IndexedArray<double>(_sx, _lx + 1);
+            //_liquidFraction = new IndexedArray<double>(_sx, _lx + 1);
+
+            //_numericsModule = new NumericsModule(_sx, _lx);
+
+            //for (var i = _sx; i <= 0; ++i)
+            //{
+            //    line = ParseLine(lines[rc++]);
+            //    //_numericsModule.LayerType[i] = int.Parse(line[1]);
+            //    _numericsModule.Xref[i] = double.Parse(line[2]);
+            //    _temperature[i] = double.Parse(line[3]);
+            //}
+
+
+            //for (var i = 1; i <= _lx; ++i)
+            //{
+            //    line = ParseLine(lines[rc++]);
+
+            //    if (!Enum.TryParse(line[1], true, out GiplDammLayerType lType) || !_enabledLayerTypes.Contains(lType))
+            //    {
+            //        Console.WriteLine($"Unrecognized GiplDamm Layer Type '{line[1]}' or the Layer Type not enabled in the properties file, at soil layer {i}");
+            //        return false;
+            //    }
+
+            //    _numericsModule.LayerType[i + 1] = (int)lType;
+            //    _numericsModule.Xref[i] = double.Parse(line[2]);
+            //    _temperature[i + 1] = double.Parse(line[3]);
+
+            //    //// set the default water content fraction profile based on the default layer type water content
+            //    //_numericsModule.DefaultWaterContentProfile[i + 1] = _defaultSoilWaterContentByLayerType[(int)lType];
+            //}
+
+
+            //// initialize liquid fraction
+
+            //for (var i = 2; i <= _numericsModule.Lx + 1; ++i)
+            //{
+            //    double y, dummy1, dummy2;
+            //    Soilsat(_temperature[i], out y, out dummy1, out dummy2, _numericsModule.LayerType[i]);
+            //    _liquidFraction[i] = y;
+            //}
+
+            //for (var i = _numericsModule.Sn; i <= 0; ++i)
+            //{
+            //    _liquidFraction[i] = 0.0;
+            //}
+
+
+            ////var writer = new StreamWriter(Path.Combine(_wd, $"{_file}{_instance}.txt"));
+            ////var writer = new StreamWriter(Path.Combine(_wd, $"{_file}.txt"));
+
+            ////var time = 0.0;
+            ////writer.Write($"{time,15:F8}");
+            ////for (var j = 1; j <= _numericsModule.Lx; ++j)
+            ////    writer.Write($"{_numericsModule.Xref[j],15:F8}");
+            ////writer.WriteLine();
+
+            ////writer.Close();
+
+            //var writer = new StreamWriter(Path.Combine(_wd, $"{Name}_Log.txt"));
+
+            //var time = 0.0;
+            //writer.Write($"{time,15:F8}");
+            //foreach (var d in shawDepths)
+            //    writer.Write($"{d,15:F8}");
+            //writer.WriteLine();
+
+            //writer.Close();
 
             return true;
         }
@@ -303,25 +543,32 @@ namespace Landis.Extension.GiplDamm
                 //   else if Gipl depth > the last Shaw depth, use the value at the last Shaw depth.
                 //   otherwise, find the Shaw depths that bracket the Gipl depth and interpolate the values.
 
-                var j = 0;
-                for (var i = 1; i <= _numericsModule.Lx; ++i)
-                {
-                    // find the first water content depth index j such that waterContentDepth[j] > Xref[i];
-                    while (j < _shawDepths.Count && _shawDepths[j] < _numericsModule.Xref[i])
-                        ++j;
+                //var j = 0;
+                //for (var i = 1; i <= _numericsModule.Lx; ++i)
+                //{
+                //    // find the first water content depth index j such that waterContentDepth[j] > Xref[i];
+                //    while (j < _shawDepths.Count && _shawDepths[j] < _numericsModule.Xref[i])
+                //        ++j;
 
-                    if (j == 0)
-                        _numericsModule.LayerW[i + 1] = shawWaterContentFraction.First();
-                    else if (j == _shawDepths.Count)
-                        _numericsModule.LayerW[i + 1] = shawWaterContentFraction.Last();
-                    else
-                        _numericsModule.LayerW[i + 1] = shawWaterContentFraction[j - 1] + (shawWaterContentFraction[j] - shawWaterContentFraction[j - 1]) * (_numericsModule.Xref[i] - _shawDepths[j - 1]) / (_shawDepths[j] - _shawDepths[j - 1]);
+                //    if (j == 0)
+                //        _numericsModule.LayerW[i + 1] = shawWaterContentFraction.First();
+                //    else if (j == _shawDepths.Count)
+                //    {
+                //        //_numericsModule.LayerW[i + 1] = shawWaterContentFraction.Last();
+                //    }
+                //    else
+                //        _numericsModule.LayerW[i + 1] = shawWaterContentFraction[j - 1] + (shawWaterContentFraction[j] - shawWaterContentFraction[j - 1]) * (_numericsModule.Xref[i] - _shawDepths[j - 1]) / (_shawDepths[j] - _shawDepths[j - 1]);
+                //}
+
+                for (var i = 0; i < _maxCommonNode; ++i)
+                {
+                    _numericsModule.LayerW[i + 2] = shawWaterContentFraction[i];
                 }
             }
             else
                 for (var i = 1; i <= _numericsModule.Lx; ++i)
                 {
-                    _numericsModule.LayerW[i + 1] = _numericsModule.DefaultWaterContentProfile[i + 1];
+                    //_numericsModule.LayerW[i + 1] = _numericsModule.DefaultWaterContentProfile[i + 1];
                 }
 
             _propertiesModule.SnowThcnd = snowThermalConductivity;
@@ -337,7 +584,7 @@ namespace Landis.Extension.GiplDamm
 
             //var writer = new StreamWriter(Path.Combine(_wd, $"{_file}{_instance}.txt"), true);
             //var writer = new StreamWriter(Path.Combine(_wd, $"{_file}.txt"), true);
-            var writer = new StreamWriter(Path.Combine(_wd, $"{Name}_Log.txt"), true);
+            var writer = new StreamWriter(Path.Combine(_wd, "Outputs", $"Log_{Name}.txt"), true);
 
             var time = 0.0;         // automatically update time
             var dtime = NumericsModule.MaxDt;   // automatically updated timestep
@@ -369,30 +616,33 @@ namespace Landis.Extension.GiplDamm
 
                 results.DailySoilTemperatureProfiles.Add(soilTempProfile);
 
-                if (_shawDepths != null)
-                {
+                //if (_shawDepths != null)
+                //{
                     // interpolate temperature results onto Shaw depths for results.
                     //  use the reverse logic from what was used above to map the Shaw water content profile
                     //  onto the Gipl depths.
 
-                    var shawTemps = new double[_shawDepths.Count];
+                    var shawTemps = new double[_maxCommonNode];
 
-                    var j = 1;
-                    for (var k = 0; k < _shawDepths.Count; ++k)
-                    {
-                        // find the first index j such that Xref[j] > shawDepths[k].
-                        // Xref[j] corresponds to _temperature[j + 1].
-                        while (j < _numericsModule.Lx + 1 && _numericsModule.Xref[j] < _shawDepths[k])
-                            ++j;
+                    for (var k = 0; k < _maxCommonNode; ++k)
+                        shawTemps[k] = _temperature[2 + k];
 
-                        if (j == 1)
-                            shawTemps[k] = _temperature[2];
-                        else if (j == _numericsModule.Lx + 1)
-                            shawTemps[k] = _temperature[_numericsModule.Lx + 1];
-                        else
-                            shawTemps[k] = _temperature[j] + (_temperature[j + 1] - _temperature[j]) * (_shawDepths[k] - _numericsModule.Xref[j - 1]) / (_numericsModule.Xref[j] - _numericsModule.Xref[j - 1]);
+                    //var j = 1;
+                    //for (var k = 0; k < _shawDepths.Count; ++k)
+                    //{
+                    //    // find the first index j such that Xref[j] > shawDepths[k].
+                    //    // Xref[j] corresponds to _temperature[j + 1].
+                    //    while (j < _numericsModule.Lx + 1 && _numericsModule.Xref[j] < _shawDepths[k])
+                    //        ++j;
 
-                    }
+                    //    if (j == 1)
+                    //        shawTemps[k] = _temperature[2];
+                    //    else if (j == _numericsModule.Lx + 1)
+                    //        shawTemps[k] = _temperature[_numericsModule.Lx + 1];
+                    //    else
+                    //        shawTemps[k] = _temperature[j] + (_temperature[j + 1] - _temperature[j]) * (_shawDepths[k] - _numericsModule.Xref[j - 1]) / (_numericsModule.Xref[j] - _numericsModule.Xref[j - 1]);
+
+                    //}
 
                     results.DailySoilTemperatureProfilesAtShawDepths.Add(shawTemps);
 
@@ -401,7 +651,7 @@ namespace Landis.Extension.GiplDamm
                         writer.Write($"{t,15:F8}");
                     writer.WriteLine();
 
-                }
+                //}
             }
 
             writer.Close();
@@ -437,12 +687,13 @@ namespace Landis.Extension.GiplDamm
             return surface_temperature;
         }
 
-        private static bool ReadTextFile(string filePath, out List<string> lines)
+        private static bool ReadTextFile(string filePath, out List<string> lines, out string errorMessage)
         {
+            errorMessage = string.Empty;
             lines = null;
             if (!File.Exists(filePath))
             {
-                Console.WriteLine($"Cannot find file: '{filePath}'.");
+                errorMessage = $"Cannot find file: '{filePath}'.";
                 return false;
             }
 
@@ -454,7 +705,7 @@ namespace Landis.Extension.GiplDamm
 
             if (!lines.Any())
             {
-                Console.WriteLine($"File: '{filePath}' is empty.");
+                errorMessage = $"File: '{filePath}' is empty.";
                 return false;
             }
 
@@ -464,6 +715,93 @@ namespace Landis.Extension.GiplDamm
         private static List<string> ParseLine(string s)
         {
             return _whiteSpaceRegex.Split(s.Trim()).ToList();
+        }
+
+        private static double AbsZero = -273.15;
+
+        public static bool TryParseInput<T>(string name, string input, out T value, out string errorMessage, double lowerRange = double.NegativeInfinity, double upperRange = double.PositiveInfinity, bool lowerInclusive = true, bool upperInclusive = true)
+        {
+            value = default(T);
+
+            if (string.IsNullOrEmpty(input))
+            {
+                errorMessage = $"{name} : input value is empty";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            if (typeof(T) == typeof(string))
+            {
+                value = (T)Convert.ChangeType(input, typeof(T));
+                return true;
+            }
+
+            if (typeof(T) == typeof(double))
+            {
+                double t;
+                if (!double.TryParse(input, out t))
+                {
+                    errorMessage = $"{name} : cannot parse '{input}' as double";
+                    return false;
+                }
+
+                if (!CheckRange(t, lowerRange, upperRange, lowerInclusive, upperInclusive, out errorMessage))
+                    return false;
+
+                value = (T)Convert.ChangeType(t, typeof(T));
+                return true;
+            }
+
+            if (typeof(T) == typeof(int))
+            {
+                int t;
+                if (!int.TryParse(input, out t))
+                {
+                    errorMessage = $"{name} : cannot parse '{input}' as int";
+                    return false;
+                }
+
+                if (!CheckRange(t, lowerRange, upperRange, lowerInclusive, upperInclusive, out errorMessage))
+                    return false;
+
+                value = (T)Convert.ChangeType(t, typeof(T));
+                return true;
+            }
+
+            if (typeof(T) == typeof(bool))
+            {
+                bool t;
+                if (!bool.TryParse(input, out t))
+                {
+                    errorMessage = $"{name} : cannot parse '{input}' as bool";
+                    return false;
+                }
+
+                value = (T)Convert.ChangeType(t, typeof(T));
+                return true;
+            }
+
+            errorMessage = $"{name} : unrecognized Type '{typeof(T)}' requested";
+
+            return false;
+        }
+
+        public static bool CheckRange(double t, double lowerRange, double upperRange, bool lowerInclusive, bool upperInclusive, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+
+            var inRange = t > lowerRange && t < upperRange;
+
+            inRange |= lowerInclusive && t == lowerRange;
+            inRange |= upperInclusive && t == upperRange;
+
+            if (!inRange)
+            {
+                errorMessage = $"Value '{t}' is out of the range: {(lowerInclusive && !double.IsNegativeInfinity(lowerRange) ? "[" : "(")}{lowerRange}, {upperRange}{(upperInclusive && !double.IsPositiveInfinity(upperRange) ? "]" : ")")}";
+                return false;
+            }
+
+            return true;
         }
 
         #endregion
