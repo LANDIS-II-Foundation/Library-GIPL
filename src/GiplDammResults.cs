@@ -18,8 +18,8 @@ namespace Landis.Extension.GiplDamm
         public List<double[]> DailySoilTemperatureProfilesAtShawDepths { get; }
         public List<double[]> DailySoilTemperatureProfiles { get; }
 
-        public double[] AverageSoilTemperatureProfileAtShawDepths { get; private set; }     // average across the month
-        public double[] AverageSoilTemperatureProfile { get; private set; }                 // average across the month
+        public List<double> AverageSoilTemperatureProfileAtShawDepths { get; private set; }     // average across the month
+        public List<double> AverageSoilTemperatureProfile { get; private set; }                 // average across the month
 
         public void MakeProfileAveragesOverDays()
         {
@@ -27,14 +27,14 @@ namespace Landis.Extension.GiplDamm
             AverageSoilTemperatureProfile = AverageProfileOverDays(DailySoilTemperatureProfiles);
         }
 
-        private double[] AverageProfileOverDays(List<double[]> dailyProfiles)
+        private List<double> AverageProfileOverDays(List<double[]> dailyProfiles)
         {
             var days = dailyProfiles.Count;
             var depths = dailyProfiles.First().Length;
-            var averageProfile = new double[depths];
+            var averageProfile = new List<double>(depths);
 
             for (var j = 0; j < depths; ++j)
-                averageProfile[j] = Enumerable.Range(0, days).Average(i => dailyProfiles[i][j]);
+                averageProfile.Add(Enumerable.Range(0, days).Average(i => dailyProfiles[i][j]));
 
             return averageProfile;
         }

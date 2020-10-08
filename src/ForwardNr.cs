@@ -458,8 +458,15 @@ namespace Landis.Extension.GiplDamm
             for (var i = 1; i <= _numericsModule.Lx; ++i)
             {
                 //_numericsModule.LayerW[i + 1] = _propertiesModule.SoilWaterContent[_numericsModule.LayerType[i + 1]];  //Volumetric water content
-                _numericsModule.LayerLf[i + 1] = Math.Pow(PropertiesModule.SoilLm[_numericsModule.LayerType[i + 1]], 1.0 - _numericsModule.LayerW[i + 1]) * Math.Pow(NumericsModule.Ki, _numericsModule.LayerW[i + 1]);
-                _numericsModule.LayerCf[i + 1] = PropertiesModule.SoilCm[_numericsModule.LayerType[i + 1]] * (1.0 - _numericsModule.LayerW[i + 1]) + NumericsModule.Ci * _numericsModule.LayerW[i + 1];
+                //_numericsModule.LayerLf[i + 1] = Math.Pow(PropertiesModule.SoilLm[_numericsModule.LayerType[i + 1]], 1.0 - _numericsModule.LayerW[i + 1]) * Math.Pow(NumericsModule.Ki, _numericsModule.LayerW[i + 1]);
+                //_numericsModule.LayerCf[i + 1] = PropertiesModule.SoilCm[_numericsModule.LayerType[i + 1]] * (1.0 - _numericsModule.LayerW[i + 1]) + NumericsModule.Ci * _numericsModule.LayerW[i + 1];
+
+                _numericsModule.LayerLf[i + 1] = Math.Pow(PropertiesModule.SoilLm[_numericsModule.LayerType[i + 1]], 1.0 - _numericsModule.LayerP[i + 1]) *
+                                                 Math.Pow(NumericsModule.Ka, _numericsModule.LayerP[i + 1] - _numericsModule.LayerW[i + 1]) *
+                                                 Math.Pow(NumericsModule.Ki, _numericsModule.LayerW[i + 1]);
+                _numericsModule.LayerCf[i + 1] = PropertiesModule.SoilCm[_numericsModule.LayerType[i + 1]] * (1.0 - _numericsModule.LayerP[i + 1]) +
+                                                 NumericsModule.Ca * (_numericsModule.LayerP[i + 1] - _numericsModule.LayerW[i + 1]) +
+                                                 NumericsModule.Ci * _numericsModule.LayerW[i + 1];
             }
 
             //soil_time = 0.0;

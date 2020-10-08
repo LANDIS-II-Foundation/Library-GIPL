@@ -43,6 +43,7 @@ namespace Landis.Extension.GiplDamm
                 Dxref = new IndexedArray<double>(sx, lx);
                 Xref = new IndexedArray<double>(sx, lx);
                 LayerW = new IndexedArray<double>(sx, lx + 1);
+                LayerP = new IndexedArray<double>(sx, lx + 1);
                 LayerLf = new IndexedArray<double>(sx, lx + 1);
                 LayerCf = new IndexedArray<double>(sx, lx + 1);
                 LayerType = new IndexedArray<int>(sx, lx + 1);
@@ -75,6 +76,7 @@ namespace Landis.Extension.GiplDamm
             public IndexedArray<double> Dxref;
             public IndexedArray<double> Xref;
             public IndexedArray<double> LayerW;
+            public IndexedArray<double> LayerP;
             public IndexedArray<double> LayerLf;
             public IndexedArray<double> LayerCf;
             public IndexedArray<int> LayerType;
