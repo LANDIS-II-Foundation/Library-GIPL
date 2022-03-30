@@ -360,7 +360,8 @@ namespace Landis.Extension.GiplDamm
             var year = 0;
             var time = 0.0;
             writer.Write($"{year,6}{time,15:F8}");
-            for (var i = 0; i < _maxCommonNode; ++i)
+            //for (var i = 0; i < _maxCommonNode; ++i)
+            for (var i = 0; i < _numericsModule.Lx; ++i)
                 writer.Write($"{_numericsModule.Xref[i + 1],15:F8}");
 
             writer.WriteLine();
@@ -465,8 +466,9 @@ namespace Landis.Extension.GiplDamm
                 results.DailySoilTemperatureProfilesAtShawDepths.Add(shawTemps);
 
                 writer.Write($"{year,6}{time,15:F8}");
-                foreach (var t in shawTemps)
-                    writer.Write($"{t,15:F8}");
+                //foreach (var t in shawTemps)
+                for (var k = 0; k < _numericsModule.Lx; ++k)
+                    writer.Write($"{_temperature[2 + k],15:F8}");
                 writer.WriteLine();
             }
 
